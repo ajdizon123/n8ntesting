@@ -1,5 +1,5 @@
 {
-  "name": "n8n-nodes-<...>",
+  "name": "n8n-nodes-charityspurseApi",
   "version": "0.1.0",
   "description": "",
   "keywords": [
@@ -33,12 +33,12 @@
   "n8n": {
     "n8nNodesApiVersion": 1,
     "credentials": [
-      "dist/credentials/ExampleCredentialsApi.credentials.js",
-      "dist/credentials/HttpBinApi.credentials.js"
+      "dist/credentials/CharitysPurseApi.credentials.js"
     ],
     "nodes": [
-      "dist/nodes/ExampleNode/ExampleNode.node.js",
-      "dist/nodes/HttpBin/HttpBin.node.js"
+      "dist/nodes/DonationInitiated/CharitysPurseDonationInitiated.node.js",
+      "dist/nodes/DonationConfirmed/CharitysPurseDonationConfirmed.node.js",
+      "dist/nodes/DonationAbandoned/CharitysPurseDonationAbandoned.node.js"
     ]
   },
   "devDependencies": {
@@ -46,6 +46,7 @@
     "eslint": "^8.57.0",
     "eslint-plugin-n8n-nodes-base": "^1.16.3",
     "gulp": "^5.0.0",
+    "n8n-workflow": "^1.17.0",
     "prettier": "^3.5.3",
     "typescript": "^5.8.2"
   },
