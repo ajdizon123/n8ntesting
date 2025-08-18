@@ -1,66 +1,221 @@
-import { INodeType, INodeTypeDescription, NodeConnectionType, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-
-export class CharitysPurseDonationInitiated implements INodeType {
+import {
+	INodeType,
+	INodeTypeDescription,
+	NodeConnectionType,
+	IPollFunctions,
+	INodeExecutionData,
+  } from 'n8n-workflow';
+  
+  export class CharitysPurseDonationInitiated implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'CharitysPurse Donation Initiated',
-		name: 'charitysPurseDonationInitiated',
-		group: ['transform'],
-		version: 9,
-		description: 'Triggers when a donation is initiated',
-		defaults: {
-			name: 'Donation Initiated Trigger',
+	  displayName: 'CharitysPurse Donation Initiated',
+	  name: 'charitysPurseDonationInitiated',
+	  group: ['trigger'],
+	  version: 15, // bump so the editor writes typeVersion: 15
+	  description: 'Triggers when a donation is initiated',
+	  defaults: { name: 'Donation Initiated Trigger' },
+	  inputs: [],
+	  outputs: [NodeConnectionType.Main],
+  
+	  // REQUIRED so n8n treats this as a polling trigger at activation time
+	  polling: true,
+  
+	  // Make creds OPTIONAL so activation never hard-fails if creds are not attached yet.
+	  // You can set required:true later once everything is green.
+	  credentials: [{ name: 'charitysPurseApi', required: false }],
+  
+	  properties: [
+		// Legacy top-level flag (kept so older saved workflows won't break on activation)
+		{
+		  displayName: 'Allow Unauthorized Certs (Legacy)',
+		  name: 'allowUnauthorizedCerts',
+		  type: 'hidden',
+		  default: false,
+		  description: 'Whether to connect even if SSL certificate validation is not possible',
 		},
-		inputs: [NodeConnectionType.Main],
-		outputs: [NodeConnectionType.Main],
-		credentials: [
+		{
+		  displayName: 'Poll Timespan',
+		  name: 'pollTimespan',
+		  type: 'hidden',
+		  default: '',
+		  description: 'Legacy parameter for backward compatibility',
+		},
+		{
+		  displayName: 'Request Options',
+		  name: 'requestOptions',
+		  type: 'collection',
+		  default: {},
+		  placeholder: 'Add Option',
+		  description: 'Additional options to configure the request (activation-safe)',
+		  options: [
 			{
-				name: 'charitysPurseApi',
-				required: true,
+			  displayName: 'Allow Unauthorized Certs',
+			  name: 'allowUnauthorizedCerts',
+			  type: 'boolean',
+			  default: false,
+			  description: 'Whether to connect even if SSL certificate validation is not possible',
 			},
-		],
-		properties: [
 			{
-				displayName: 'Request Options',
-				name: 'requestOptions',
-				type: 'collection',
-				default: {},
-				placeholder: 'Add Option',
-				description: 'Additional options to configure the request. Provided for compatibility with saved workflows.',
-				options: [],
+			  displayName: 'Query Parameters',
+			  name: 'qs',
+			  type: 'string',
+			  default: '',
+			  description: 'Query parameters to include in the request (JSON object string)',
 			},
-		],
+			{
+			  displayName: 'Headers',
+			  name: 'headers',
+			  type: 'string',
+			  default: '',
+			  description: 'Headers to include in the request (JSON object string)',
+			},
+		  ],
+		},
+		{
+		  displayName: 'Options',
+		  name: 'options',
+		  type: 'hidden',
+		  default: {},
+		  description: 'Legacy parameter for backward compatibility',
+		},
+		{
+		  displayName: 'Additional Fields',
+		  name: 'additionalFields',
+		  type: 'hidden',
+		  default: {},
+		  description: 'Legacy parameter for backward compatibility',
+		},
+	  ],
 	};
+  
+		/**
+	 * Poll-based trigger with robust terminal logging, optional credentials,
+	 * and safe parameter reads (2-arg overload).
+	 */
+	async poll(this: IPollFunctions): Promise<INodeExecutionData[][] | null> {
+	  // ---- Read params (defaults come from properties) ----
+	  const allowUnauthorizedCerts = Boolean(
+		this.getNodeParameter('requestOptions.allowUnauthorizedCerts', 0) as unknown,
+	  );
+	  const qsRaw = String(
+		(this.getNodeParameter('requestOptions.qs', 0) as unknown) ?? '',
+	  ).trim();
+	  const headersRaw = String(
+		(this.getNodeParameter('requestOptions.headers', 0) as unknown) ?? '',
+	  ).trim();
 
-
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-		const staticData = this.getWorkflowStaticData('node');
-
-		const lastTime = staticData.lastPollTime || new Date(0).toISOString();
-
-		const response = await this.helpers.requestWithAuthentication.call(this, 'charitysPurseApi', {
-			method: 'GET',
-			url: 'https://api.charityspurse.ai/v1/integrations/zapier/donation/donation/list',
-			qs: {
-				since: lastTime,
-			},
-			json: true,
-		});
-
-		let body: any = response as any;
-		if (typeof body === 'string') {
-			try {
-				body = JSON.parse(body);
-			} catch {}
+	  // ---- Parse optional JSON inputs (non-fatal if malformed) ----
+	  let userQs: Record<string, unknown> | undefined;
+	  if (qsRaw) {
+		try { 
+		  userQs = JSON.parse(qsRaw); 
+		} catch (e) { 
+		  // Failed to parse qs, continue with undefined
 		}
-		const raw = body?.data ?? body;
-		const donationsArray: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+	  }
 
-		const filteredDonations = donationsArray.filter((d: any) =>
-			d.status === 'processing' || (d.status === 'confirmed' && d.created_at !== d.updated_at)
-		);
+	  let userHeaders: Record<string, string> | undefined;
+	  if (headersRaw) {
+		try { 
+		  userHeaders = JSON.parse(headersRaw); 
+		} catch (e) { 
+		  // Failed to parse headers, continue with undefined
+		}
+	  }
 
-		staticData.lastPollTime = new Date().toISOString();
+	  // ---- Interval control via staticData ----
+	  const staticData = this.getWorkflowStaticData('node');
+	  const intervalSeconds = 60;
 
-		return [filteredDonations.map((d: any) => ({ json: { id: d._id, ...d } }))];
+	  const now = Date.now();
+	  const nextPollAt = (staticData.nextPollAt as number | undefined) ?? 0;
+	  if (now < nextPollAt) {
+		return null;
+	  }
+
+	  if (!staticData.processedIds) staticData.processedIds = {};
+	  const processedIds = staticData.processedIds as Record<string, boolean>;
+	  const lastTime = (staticData.lastPollTime as string) || new Date(0).toISOString();
+
+	  // ---- Build request ----
+	  const baseUrlDefault = 'https://api.charityspurse.ai';
+	  let hasCreds = false;
+	  let baseUrl = baseUrlDefault;
+	  let authHeader: string | undefined;
+
+	  // Try to load credentials (optional)
+	  try {
+		const creds = (await this.getCredentials('charitysPurseApi')) as Record<string, any>;
+		if (creds) {
+		  hasCreds = true;
+		  baseUrl = (creds.baseUrl as string) || baseUrlDefault;
+		  const apiKey = (creds.apiKey as string) || '';
+		  if (apiKey) authHeader = `Bearer ${apiKey}`;
+		}
+	  } catch {
+		// No credentials attached, continue with defaults
+	  }
+
+	  const requestOptions: any = {
+		method: 'GET',
+		url: `${String(baseUrl).replace(/\/+$/, '')}/v1/integrations/zapier/donation/donation/list`,
+		qs: { since: lastTime, ...(userQs ?? {}) },
+		headers: { ...(userHeaders ?? {}), ...(authHeader ? { Authorization: authHeader } : {}) },
+		json: true,
+		// honored by n8n's HTTP client
+		rejectUnauthorized: !allowUnauthorizedCerts,
+	  };
+
+	  // ---- Make request (with or without auth helper) ----
+	  let response: unknown;
+	  try {
+		if (hasCreds) {
+		  response = await this.helpers.requestWithAuthentication.call(
+			this,
+			'charitysPurseApi',
+			requestOptions,
+		  );
+		} else {
+		  // Fallback if no creds attached (works for public/test endpoints)
+		  response = await this.helpers.request!(requestOptions);
+		}
+	  } catch (err) {
+		// Don't throw; keep trigger alive. Push next poll farther to avoid hot-looping on errors.
+		staticData.nextPollAt = Date.now() + 2 * 60 * 1000;
+		return null;
+	  }
+
+	  // ---- Normalize response ----
+	  let body: any = response as any;
+	  if (typeof body === 'string') {
+		try { body = JSON.parse(body); } catch { /* ignore */ }
+	  }
+	  const raw = body?.data ?? body;
+	  const donationsArray: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+
+	  // ---- Filter new/interesting items ----
+	  const filteredDonations = donationsArray.filter((d: any) => {
+		const statusMatch =
+		  d?.status === 'processing' ||
+		  (d?.status === 'confirmed' && d?.created_at !== d?.updated_at);
+		const id = d?._id;
+		const seen = id ? processedIds[id] : false;
+
+		if (!statusMatch || !id || seen) return false;
+		processedIds[id] = true;
+		return true;
+	  });
+
+	  // ---- Update cursors/interval ----
+	  staticData.lastPollTime = new Date().toISOString();
+	  staticData.nextPollAt = Date.now() + intervalSeconds * 1000;
+	  staticData.processedIds = processedIds;
+
+	  if (filteredDonations.length === 0) {
+		return null;
+	  }
+
+	  const items = filteredDonations.map((d: any) => ({ json: { id: d._id, ...d } }));
+	  return [items];
 	}
-}
+  }

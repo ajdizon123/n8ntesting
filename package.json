@@ -38,7 +38,9 @@
     "nodes": [
       "dist/nodes/DonationInitiated/CharitysPurseDonationInitiated.node.js",
       "dist/nodes/DonationConfirmed/CharitysPurseDonationConfirmed.node.js",
-      "dist/nodes/DonationAbandoned/CharitysPurseDonationAbandoned.node.js"
+      "dist/nodes/DonationAbandoned/CharitysPurseDonationAbandoned.node.js",
+      "dist/nodes/DonationTesting/CharitysPurseDonationTesting.node.js",
+      "dist/nodes/DonationTestingAlt/CharitysPurseDonationTestingAlt.node.js"
     ]
   },
   "devDependencies": {
@@ -48,7 +50,7 @@
     "gulp": "^5.0.0",
     "n8n-workflow": "^1.17.0",
     "prettier": "^3.5.3",
-    "typescript": "^5.8.2"
+    "typescript": "^5.9.2"
   },
   "peerDependencies": {
     "n8n-workflow": "*"
