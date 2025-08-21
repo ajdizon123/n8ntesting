@@ -8,7 +8,7 @@ import {
   export class CharitysPurseApi implements ICredentialType {
     name = 'charitysPurseApi';
     displayName = 'CharitysPurse API';
-    documentationUrl = 'https://api.charityspurse.ai/docs'; // replace with actual docs URL
+    documentationUrl = 'https://www.notion.so/digitalpurse/N8N-User-s-Documentation-25615ae35bae805985c1e0b7af4bd47b?v=d099fc4a103e4aefb57025e8a19fd7ea&source=copy_link';
     properties: INodeProperties[] = [
       {
         displayName: 'API Key',
