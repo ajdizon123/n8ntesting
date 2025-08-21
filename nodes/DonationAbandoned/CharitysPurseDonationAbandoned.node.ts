@@ -21,7 +21,7 @@ export class CharitysPurseDonationAbandoned implements INodeType {
 		polling: true,
 
 		// Make creds OPTIONAL so activation never hard-fails if creds are not attached yet.
-		credentials: [{ name: 'charitysPurseApi', required: false }],
+		credentials: [{ name: 'charitysPurseApi', required: true }],
 
 		properties: [
 			// Legacy top-level flag (kept so older saved workflows won't break on activation)
